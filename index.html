@@ -84,6 +84,68 @@
         <!-- Upcoming -->
         <div class="dash-card span-2"><div class="card-header"><h3 data-i18n="dash.upcoming">Upcoming Sessions</h3><button class="btn btn-ghost btn-sm" id="btn-goto-planner" data-i18n="nav.planner">Plan</button></div><div class="card-body"><div class="empty-state" id="dash-empty-plan"><span class="empty-icon">📅</span><p data-i18n="dash.noPlan">No sessions planned.</p></div><ul class="plan-preview-list" id="dash-plan-list"></ul></div></div>
 
+        <!-- Study Insights (Adaptive Study Coach) -->
+        <div class="dash-card span-4 insights-card">
+          <div class="card-header">
+            <div class="insights-header-left">
+              <h3>🧠 <span data-i18n="coach.title">Study Insights</span></h3>
+              <span class="badge badge-coach" data-i18n="coach.badge">AI Coach</span>
+            </div>
+            <div class="insights-tabs">
+              <button class="insights-tab active" data-itab="overview" data-i18n="coach.tabOverview">Overview</button>
+              <button class="insights-tab" data-itab="subjects" data-i18n="coach.tabSubjects">Subjects</button>
+              <button class="insights-tab" data-itab="patterns" data-i18n="coach.tabPatterns">Patterns</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- Tab: Overview -->
+            <div class="insights-tab-panel active" id="itab-overview">
+              <div class="insights-grid" id="insights-grid">
+                <div class="insight-item"><div class="insight-icon">⏰</div><div><span class="insight-label" data-i18n="coach.bestTime">Best Study Time</span><span class="insight-value" id="ins-best-time">—</span></div></div>
+                <div class="insight-item"><div class="insight-icon">🎯</div><div><span class="insight-label" data-i18n="coach.recommended">Recommended Today</span><span class="insight-value" id="ins-recommended">—</span></div></div>
+                <div class="insight-item"><div class="insight-icon">📊</div><div><span class="insight-label" data-i18n="coach.goalProgress">Goal Progress</span><span class="insight-value" id="ins-goal">—</span></div></div>
+                <div class="insight-item"><div class="insight-icon">📚</div><div><span class="insight-label" data-i18n="coach.topSubject">Top Subject</span><span class="insight-value" id="ins-subject">—</span></div></div>
+              </div>
+              <div class="insights-tips" id="insights-tips"></div>
+            </div>
+            <!-- Tab: Subject Analysis -->
+            <div class="insights-tab-panel" id="itab-subjects">
+              <div class="subject-analysis" id="subject-analysis">
+                <div class="empty-state" id="subject-empty"><span class="empty-icon">📚</span><p data-i18n="coach.noSubjects">Add tasks with categories or planner sessions to see subject analysis.</p></div>
+                <div id="subject-chart-wrap" class="hidden">
+                  <div class="subject-chart-header">
+                    <div class="subject-chart-toggle">
+                      <button class="sct-btn active" data-sct="hours" data-i18n="coach.byHours">Hours</button>
+                      <button class="sct-btn" data-sct="sessions" data-i18n="coach.bySessions">Sessions</button>
+                      <button class="sct-btn" data-sct="tasks" data-i18n="coach.byTasks">Tasks</button>
+                    </div>
+                    <span class="subject-legend-note" data-i18n="coach.subjectNote">Based on tasks & planner</span>
+                  </div>
+                  <div class="subject-bars" id="subject-bars"></div>
+                  <div class="subject-summary" id="subject-summary"></div>
+                </div>
+              </div>
+            </div>
+            <!-- Tab: Patterns -->
+            <div class="insights-tab-panel" id="itab-patterns">
+              <div class="patterns-layout">
+                <div class="pattern-card" id="pat-hourly">
+                  <div class="pattern-card-title" data-i18n="coach.hourlyActivity">Hourly Activity</div>
+                  <div class="hourly-heatmap" id="hourly-heatmap"></div>
+                </div>
+                <div class="pattern-card" id="pat-pomodoro">
+                  <div class="pattern-card-title" data-i18n="coach.pomodoroHealth">Pomodoro Health</div>
+                  <div class="pomodoro-stats" id="pomodoro-stats"></div>
+                </div>
+                <div class="pattern-card" id="pat-daily">
+                  <div class="pattern-card-title" data-i18n="coach.dailyPattern">Daily Load</div>
+                  <div class="daily-load-bars" id="daily-load-bars"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Quote -->
         <div class="dash-card span-4 quote-card"><p id="dash-quote" class="quote-text">"The secret of getting ahead is getting started."</p><span id="dash-quote-author" class="quote-author">— Mark Twain</span></div>
       </div>
