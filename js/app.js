@@ -130,13 +130,6 @@ function refreshDashboard() {
   if (recent.length === 0) { te.classList.remove('hidden'); tl.innerHTML = ''; }
   else { te.classList.add('hidden'); tl.innerHTML = recent.map(tk => `<li><span class="task-dot ${tk.completed ? 'done' : ''}"></span><span style="${tk.completed ? 'text-decoration:line-through;color:var(--text3)' : ''}">${esc(tk.text)}</span></li>`).join(''); }
 
-  // Upcoming planner sessions
-  const now = new Date();
-  const upcoming = S.planner.filter(p => new Date(p.date + 'T' + p.end) >= now).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).slice(0, 4);
-  const pl = $('dash-plan-list'), pe = $('dash-empty-plan');
-  if (upcoming.length === 0) { pe.classList.remove('hidden'); pl.innerHTML = ''; }
-  else { pe.classList.add('hidden'); pl.innerHTML = upcoming.map(p => `<li><span class="plan-chip">${esc(p.subject)}</span><span>${p.date} ${p.start}-${p.end}</span></li>`).join(''); }
-
   // Study Insights (Adaptive Coach)
   refreshInsights();
 
@@ -423,16 +416,17 @@ function exportICS() {
 }
 
 // ============================
-// AI SUMMARIZER (client-side extractive)
 // ============================
+// AI STUDY HELPER
+// ============================
+
+// Client-side extractive summarizer
 function summarize(text) {
   const sentences = text.match(/[^.!?\n]+[.!?\n]+/g) || [text];
   if (sentences.length === 0) return { summary: '', ideas: [] };
-  // Word frequency scoring
   const words = text.toLowerCase().split(/\W+/).filter(w => w.length > 3);
   const freq = {};
   words.forEach(w => freq[w] = (freq[w] || 0) + 1);
-  // Score each sentence
   const scored = sentences.map(s => {
     const sw = s.toLowerCase().split(/\W+/).filter(w => w.length > 3);
     const score = sw.reduce((sum, w) => sum + (freq[w] || 0), 0) / (sw.length || 1);
@@ -445,13 +439,69 @@ function summarize(text) {
   return { summary, ideas };
 }
 
-function createStudyNotes(text) {
-  const { summary, ideas } = summarize(text);
-  let notes = '📝 STUDY NOTES\n\n';
-  notes += '📌 Summary:\n' + summary + '\n\n';
-  notes += '💡 Key Points:\n' + ideas.map((i, n) => (n + 1) + '. ' + i).join('\n');
-  return notes;
+// Flashcard generator
+function generateFlashcards(text) {
+  const sentences = (text.match(/[^.!?\n]+[.!?\n]+/g) || [text]).map(s => s.trim()).filter(s => s.length > 20);
+  const cards = [];
+  sentences.forEach(s => {
+    const defMatch = s.match(/^([A-Z][^,]{3,40}?)\s+(?:is|are|was|were|refers to|means|defined as)\s+(.{15,})/);
+    if (defMatch) { cards.push({ q: 'What is ' + defMatch[1].trim() + '?', a: defMatch[2].trim() }); return; }
+    const colonMatch = s.match(/^([A-Z][^:]{3,40}?):\s+(.{15,})/);
+    if (colonMatch) { cards.push({ q: 'What is ' + colonMatch[1].trim() + '?', a: colonMatch[2].trim() }); return; }
+  });
+  if (cards.length < 3) {
+    const { ideas } = summarize(text);
+    ideas.forEach(s => {
+      const words = s.trim().split(/\s+/);
+      if (words.length > 5) {
+        const keyWords = words.filter(w => w.length > 5 && w[0] === w[0].toUpperCase());
+        const key = keyWords[0] || words[words.length - 2];
+        if (key) cards.push({ q: 'Fill in: ' + s.replace(key, '______'), a: key });
+      }
+    });
+  }
+  const seen = new Set();
+  return cards.filter(c => { const k = c.q.slice(0, 40); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 10);
 }
+
+// Suggest study tasks from notes
+function suggestStudyTasks(text) {
+  const { ideas } = summarize(text);
+  const tasks = [];
+  const prefixes = ['Review', 'Study', 'Memorize', 'Practice', 'Understand', 'Summarize'];
+  ideas.forEach((s, i) => {
+    const words = s.split(/\s+/);
+    const topics = words.filter(w => w.length > 4 && w[0] === w[0].toUpperCase() && !/^(The|This|That|These|Those|When|Where|How|Why|What|With|From|Into|Over|Under|After|Before)$/.test(w));
+    const topic = (topics[0] || words.slice(0, 3).join(' ')).replace(/[,;:.!?]$/, '');
+    if (topic && topic.length > 3) tasks.push({ text: prefixes[i % prefixes.length] + ' ' + topic, category: 'Study', source: s.slice(0, 60) + (s.length > 60 ? '...' : '') });
+  });
+  const firstWords = text.trim().split(/\s+/).slice(0, 4).join(' ');
+  tasks.unshift({ text: 'Review notes: ' + firstWords + '...', category: 'Study', source: 'Auto-generated' });
+  return tasks.slice(0, 6);
+}
+
+// Flashcard state
+let _fcCards = [], _fcIndex = 0;
+
+function renderFlashcard() {
+  if (_fcCards.length === 0) return;
+  const card = _fcCards[_fcIndex];
+  const el = $('flashcard');
+  el.classList.remove('flipped');
+  $('fc-front-text').textContent = card.q;
+  $('fc-back-text').textContent = card.a;
+  $('fc-counter').textContent = (_fcIndex + 1) + ' / ' + _fcCards.length;
+  $('fc-progress').innerHTML = _fcCards.map((_, i) => `<span class="fc-dot ${i === _fcIndex ? 'active' : i < _fcIndex ? 'done' : ''}"></span>`).join('');
+}
+
+function showAIPanel(panelId, badgeLabel, badgeColor) {
+  ['ai-results','ai-flashcards','ai-suggested-tasks','ai-loading','ai-empty'].forEach(id => $(''+id).classList.add('hidden'));
+  $(panelId).classList.remove('hidden');
+  const badge = $('ai-mode-badge');
+  badge.textContent = badgeLabel; badge.classList.remove('hidden');
+  badge.style.cssText = badgeColor ? 'background:' + badgeColor + ';color:#fff;border-radius:20px;padding:.2rem .7rem;font-size:.72rem;font-weight:700' : '';
+}
+
 
 // ============================
 // PROFILE & SETTINGS
@@ -534,12 +584,8 @@ function toast(icon, msg) {
 }
 
 // ============================
-// ADAPTIVE STUDY COACH
-// ============================
-// ============================
 // ADAPTIVE STUDY COACH ENGINE
 // ============================
-
 let _insightTab = 'overview';
 let _subjectChartMode = 'hours';
 
@@ -566,135 +612,105 @@ function initInsightsTabs() {
 }
 
 function buildSubjectMap() {
-  const subjectMap = {};
+  const map = {};
   S.todos.forEach(tk => {
-    if (tk.category) {
-      if (!subjectMap[tk.category]) subjectMap[tk.category] = { tasks: 0, completed: 0, hours: 0, sessions: 0 };
-      subjectMap[tk.category].tasks++;
-      if (tk.completed) subjectMap[tk.category].completed++;
-    }
+    if (!tk.category) return;
+    if (!map[tk.category]) map[tk.category] = { tasks: 0, completed: 0, hours: 0, sessions: 0 };
+    map[tk.category].tasks++;
+    if (tk.completed) map[tk.category].completed++;
   });
   S.planner.forEach(p => {
-    const key = p.subject;
-    if (!subjectMap[key]) subjectMap[key] = { tasks: 0, completed: 0, hours: 0, sessions: 0 };
-    const startMin = parseInt(p.start.split(':')[0]) * 60 + parseInt(p.start.split(':')[1] || 0);
-    const endMin = parseInt(p.end.split(':')[0]) * 60 + parseInt(p.end.split(':')[1] || 0);
-    const dur = Math.max(0, endMin - startMin) / 60;
-    subjectMap[key].hours += dur;
-    subjectMap[key].sessions++;
+    if (!map[p.subject]) map[p.subject] = { tasks: 0, completed: 0, hours: 0, sessions: 0 };
+    const [sh, sm] = p.start.split(':').map(Number);
+    const [eh, em] = p.end.split(':').map(Number);
+    map[p.subject].hours += Math.max(0, (eh * 60 + em - sh * 60 - sm) / 60);
+    map[p.subject].sessions++;
   });
-  return subjectMap;
+  return map;
 }
 
 function renderSubjectChart(subjectMap) {
   const subjects = Object.entries(subjectMap);
-  const wrap = $('subject-chart-wrap');
-  const empty = $('subject-empty');
-  if (subjects.length === 0) {
-    wrap.classList.add('hidden'); empty.classList.remove('hidden'); return;
-  }
-  wrap.classList.remove('hidden'); empty.classList.add('hidden');
-
-  const getVal = ([, v]) => _subjectChartMode === 'hours' ? v.hours : _subjectChartMode === 'sessions' ? v.sessions : v.tasks;
+  const wrap = $('subject-chart-wrap'), empty = $('subject-empty');
+  if (subjects.length === 0) { wrap && wrap.classList.add('hidden'); empty && empty.classList.remove('hidden'); return; }
+  wrap && wrap.classList.remove('hidden'); empty && empty.classList.add('hidden');
+  const getVal = ([, v]) => _subjectChartMode === 'hours' ? v.hours : v.tasks;
   const sorted = [...subjects].sort((a, b) => getVal(b) - getVal(a));
   const maxVal = Math.max(...sorted.map(getVal), 0.01);
-
-  const COLORS = ['var(--purple)', 'var(--blue)', 'var(--green)', 'var(--orange)', '#e879f9', '#22d3ee', '#f97316', '#a3e635'];
-
-  $('subject-bars').innerHTML = sorted.slice(0, 8).map(([name, v], i) => {
+  const COLORS = ['var(--purple)','var(--blue)','var(--green)','var(--orange)','#e879f9','#22d3ee','#f97316'];
+  const barsEl = $('subject-bars');
+  if (!barsEl) return;
+  barsEl.innerHTML = sorted.slice(0, 7).map(([name, v], i) => {
     const val = getVal([name, v]);
     const pct = (val / maxVal) * 100;
-    const label = _subjectChartMode === 'hours' ? val.toFixed(1) + 'h' : _subjectChartMode === 'sessions' ? val + ' sess.' : val + ' tasks';
-    const completionRate = v.tasks > 0 ? Math.round((v.completed / v.tasks) * 100) : null;
+    const label = _subjectChartMode === 'hours' ? val.toFixed(1) + 'h' : val + ' tasks';
+    const rate = v.tasks > 0 ? Math.round((v.completed / v.tasks) * 100) : null;
     return `<div class="subject-bar-row">
       <div class="subject-bar-name" title="${esc(name)}">${esc(name)}</div>
-      <div class="subject-bar-track">
-        <div class="subject-bar-fill" style="width:${pct}%;background:${COLORS[i % COLORS.length]}" data-val="${label}"></div>
-      </div>
-      <div class="subject-bar-val">${label}${completionRate !== null ? `<span class="sbar-rate">${completionRate}%</span>` : ''}</div>
+      <div class="subject-bar-track"><div class="subject-bar-fill" style="width:${pct}%;background:${COLORS[i % COLORS.length]}"></div></div>
+      <div class="subject-bar-val">${label}${rate !== null ? `<span class="sbar-rate">${rate}%</span>` : ''}</div>
     </div>`;
   }).join('');
-
-  // Summary
-  const total = sorted.reduce((s, [, v]) => s + getVal([, v]), 0);
-  const top = sorted[0];
-  const topPct = total > 0 ? Math.round((getVal(top) / total) * 100) : 0;
-  $('subject-summary').innerHTML = `<span>${sorted.length} subjects · top: <strong>${esc(top[0])}</strong> (${topPct}%)</span>`;
+  const sumEl = $('subject-summary');
+  if (sumEl && sorted.length > 0) {
+    const top = sorted[0], total = sorted.reduce((s, [, v]) => s + getVal([, v]), 0);
+    const topPct = total > 0 ? Math.round((getVal(top) / total) * 100) : 0;
+    sumEl.textContent = sorted.length + ' subjects · top: ' + top[0] + ' (' + topPct + '%)';
+  }
 }
 
 function renderHourlyHeatmap() {
-  const hourCounts = new Array(24).fill(0);
-  S.sessionLog.forEach(s => { if (s.completed) hourCounts[s.hour]++; });
-  const maxCount = Math.max(...hourCounts, 1);
-
+  const el = $('hourly-heatmap'); if (!el) return;
+  const counts = new Array(24).fill(0);
+  S.sessionLog.forEach(s => { if (s.completed) counts[s.hour]++; });
+  const max = Math.max(...counts, 1);
   const LABELS = ['12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p','11p'];
-  const cells = hourCounts.map((c, h) => {
-    const int = Math.round((c / maxCount) * 4);
-    return `<div class="hh-cell hh-int-${int}" title="${LABELS[h]}: ${c} session${c !== 1 ? 's' : ''}"><span class="hh-lbl">${LABELS[h]}</span></div>`;
-  }).join('');
-
-  $('hourly-heatmap').innerHTML = `<div class="hh-grid">${cells}</div><div class="hh-legend"><span>None</span><div class="hh-leg-cells"><div class="hh-cell hh-int-0 hh-s"></div><div class="hh-cell hh-int-1 hh-s"></div><div class="hh-cell hh-int-2 hh-s"></div><div class="hh-cell hh-int-3 hh-s"></div><div class="hh-cell hh-int-4 hh-s"></div></div><span>Peak</span></div>`;
+  const noData = counts.every(c => c === 0);
+  if (noData) { el.innerHTML = '<div class="empty-state" style="padding:.5rem"><span class="empty-icon" style="font-size:1.5rem">⏰</span><p style="font-size:.75rem">Complete sessions to see activity patterns</p></div>'; return; }
+  el.innerHTML = '<div class="hh-grid">' + counts.map((c, h) => {
+    const int = Math.round((c / max) * 4);
+    return `<div class="hh-cell hh-int-${int}" title="${LABELS[h]}: ${c}"><span class="hh-lbl">${LABELS[h]}</span></div>`;
+  }).join('') + '</div><div class="hh-legend"><span>Low</span><div class="hh-leg-cells"><div class="hh-cell hh-int-0 hh-s"></div><div class="hh-cell hh-int-2 hh-s"></div><div class="hh-cell hh-int-4 hh-s"></div></div><span>High</span></div>';
 }
 
 function renderPomodoroHealth() {
-  const logs = S.sessionLog;
-  const total = logs.length;
-  const completed = logs.filter(s => s.completed).length;
-  const stopped = total - completed;
-  const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const el = $('pomodoro-stats'); if (!el) return;
+  const logs = S.sessionLog, total = logs.length, completed = logs.filter(s => s.completed).length;
+  const noData = total === 0;
+  if (noData) { el.innerHTML = '<div class="empty-state" style="padding:.5rem"><span class="empty-icon" style="font-size:1.5rem">🍅</span><p style="font-size:.75rem">Start your first Pomodoro session</p></div>'; return; }
+  const rate = Math.round((completed / total) * 100);
   const avgDur = completed > 0 ? Math.round(logs.filter(s => s.completed).reduce((s, l) => s + l.dur, 0) / completed) : 0;
-
-  // Suggest duration based on stops
-  const recent = logs.slice(-10);
-  const recentStops = recent.filter(s => !s.completed).length;
-  let suggestion = '';
+  const recent = logs.slice(-10), recentStops = recent.filter(s => !s.completed).length;
   const currMin = Math.round(S.timer.focusDur / 60);
-  if (recentStops >= 4 && currMin > 15) {
-    const sug = Math.max(10, Math.round(currMin * 0.7));
-    suggestion = `<div class="pom-suggest tip-warn">💡 ${t('coach.tipShorter').replace('{min}', sug)}</div>`;
-  } else if (recentStops === 0 && recent.length >= 5 && currMin < 50) {
-    suggestion = `<div class="pom-suggest tip-success">🚀 ${t('coach.tipLonger').replace('{min}', Math.min(60, currMin + 5))}</div>`;
-  }
-
-  $('pomodoro-stats').innerHTML = `
-    <div class="pom-metrics">
-      <div class="pom-metric"><span class="pom-val" style="color:var(--green)">${completed}</span><span class="pom-lbl">${t('coach.completed')}</span></div>
-      <div class="pom-metric"><span class="pom-val" style="color:var(--orange)">${stopped}</span><span class="pom-lbl">${t('coach.stopped')}</span></div>
-      <div class="pom-metric"><span class="pom-val" style="color:var(--purple)">${rate}%</span><span class="pom-lbl">${t('coach.completionRate')}</span></div>
-      <div class="pom-metric"><span class="pom-val" style="color:var(--blue)">${avgDur}m</span><span class="pom-lbl">${t('coach.avgDuration')}</span></div>
-    </div>
-    <div class="pom-bar-wrap"><div class="pom-bar-fill" style="width:${rate}%"></div></div>
-    ${suggestion}
-  `;
+  let suggest = '';
+  if (recentStops >= 4 && currMin > 15) suggest = `<div class="pom-suggest tip-warn">💡 Try ${Math.max(10, Math.round(currMin * 0.7))}min sessions</div>`;
+  else if (recentStops === 0 && recent.length >= 5) suggest = `<div class="pom-suggest tip-success">🚀 Try ${Math.min(60, currMin + 5)}min sessions</div>`;
+  el.innerHTML = `<div class="pom-metrics">
+    <div class="pom-metric"><span class="pom-val" style="color:var(--green)">${completed}</span><span class="pom-lbl">Done</span></div>
+    <div class="pom-metric"><span class="pom-val" style="color:var(--orange)">${total - completed}</span><span class="pom-lbl">Stopped</span></div>
+    <div class="pom-metric"><span class="pom-val" style="color:var(--purple)">${rate}%</span><span class="pom-lbl">Rate</span></div>
+    <div class="pom-metric"><span class="pom-val" style="color:var(--blue)">${avgDur}m</span><span class="pom-lbl">Avg</span></div>
+  </div><div class="pom-bar-wrap"><div class="pom-bar-fill" style="width:${rate}%"></div></div>${suggest}`;
 }
 
 function renderDailyLoad() {
+  const el = $('daily-load-bars'); if (!el) return;
   const days = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
-    const k = dateKey(d);
-    const data = S.stats.daily[k] || { sessions: 0, minutes: 0 };
+    const data = S.stats.daily[dateKey(d)] || { sessions: 0, minutes: 0 };
     days.push({ label: d.toLocaleDateString('en', { weekday: 'short' }), sessions: data.sessions, minutes: data.minutes });
   }
-  const maxSess = Math.max(...days.map(d => d.sessions), 1);
-  const goal = S.profile.dailyGoal || 4;
-
-  $('daily-load-bars').innerHTML = `<div class="dlb-chart">${days.map(d => {
-    const pct = (d.sessions / maxSess) * 100;
-    const overload = d.sessions > goal * 1.5;
-    const color = overload ? 'var(--orange)' : d.sessions >= goal ? 'var(--green)' : 'var(--purple)';
-    return `<div class="dlb-col">
-      <div class="dlb-bar-wrap" title="${d.sessions} sessions, ${d.minutes}m">
-        <div class="dlb-bar-fill" style="height:${pct}%;background:${color}"></div>
-      </div>
-      <span class="dlb-lbl">${d.label}</span>
-      <span class="dlb-val">${d.sessions}</span>
-    </div>`;
-  }).join('')}</div><div class="dlb-legend"><span style="color:var(--green)">● Goal met</span><span style="color:var(--orange)">● Overload</span></div>`;
+  const maxS = Math.max(...days.map(d => d.sessions), 1), goal = S.profile.dailyGoal || 4;
+  el.innerHTML = '<div class="dlb-chart">' + days.map(d => {
+    const pct = Math.max((d.sessions / maxS) * 100, d.sessions > 0 ? 8 : 0);
+    const color = d.sessions > goal * 1.5 ? 'var(--orange)' : d.sessions >= goal ? 'var(--green)' : d.sessions > 0 ? 'var(--purple)' : 'var(--border)';
+    return `<div class="dlb-col"><div class="dlb-bar-wrap" title="${d.sessions} sessions"><div class="dlb-bar-fill" style="height:${pct}%;background:${color}"></div></div><span class="dlb-lbl">${d.label}</span><span class="dlb-val">${d.sessions > 0 ? d.sessions : ''}</span></div>`;
+  }).join('') + '</div><div class="dlb-legend"><span style="color:var(--green)">● Goal</span><span style="color:var(--orange)">● Overload</span></div>';
 }
 
 function refreshInsightsTab(tab) {
-  if (tab === 'subjects') { renderSubjectChart(buildSubjectMap()); }
+  if (tab === 'subjects') renderSubjectChart(buildSubjectMap());
   else if (tab === 'patterns') { renderHourlyHeatmap(); renderPomodoroHealth(); renderDailyLoad(); }
 }
 
@@ -708,7 +724,7 @@ function refreshInsights() {
   const hourCounts = new Array(24).fill(0);
   S.sessionLog.forEach(s => { if (s.completed) hourCounts[s.hour]++; });
   const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
-  const hasSessions = S.sessionLog.filter(s => s.completed).length > 0;
+  const hasSessions = S.sessionLog.length > 0;
   if (hasSessions && hourCounts[peakHour] > 0) {
     const ampm = peakHour >= 12 ? 'PM' : 'AM';
     const h12 = peakHour % 12 || 12;
@@ -721,11 +737,9 @@ function refreshInsights() {
   // 2. Suggest optimized Pomodoro durations (detect early stops)
   const recentLogs = S.sessionLog.slice(-10);
   const earlyStops = recentLogs.filter(s => !s.completed).length;
-  if (earlyStops >= 4 && S.timer.focusDur > 600) {
+  if (earlyStops > 3 && S.timer.focusDur > 600) {
     const suggestedMin = Math.max(10, Math.round(S.timer.focusDur / 60 * 0.7));
     tips.push({ icon: '💡', text: t('coach.tipShorter').replace('{min}', suggestedMin), type: 'tip-warn' });
-  } else if (earlyStops === 0 && recentLogs.length >= 5 && S.timer.focusDur < 3000) {
-    tips.push({ icon: '🚀', text: t('coach.tipLonger').replace('{min}', Math.min(60, Math.round(S.timer.focusDur / 60) + 5)), type: 'tip-success' });
   }
 
   // 3. Daily goal recommendation
@@ -737,8 +751,6 @@ function refreshInsights() {
       tips.push({ icon: '🏃', text: t('coach.tipBehind').replace('{n}', remaining), type: 'tip-warn' });
     } else if (remaining <= 2) {
       tips.push({ icon: '💪', text: t('coach.tipAlmostThere').replace('{n}', remaining), type: 'tip-success' });
-    } else {
-      tips.push({ icon: '📅', text: t('coach.tipOnTrack').replace('{n}', remaining), type: 'tip-info' });
     }
   } else {
     $('ins-recommended').textContent = '✅ ' + t('coach.goalDone');
@@ -749,20 +761,12 @@ function refreshInsights() {
   const goalPct = Math.min(Math.round((todayData.sessions / goal) * 100), 100);
   $('ins-goal').textContent = goalPct + '%';
 
-  // 5. Overload detection — too many sessions, suggest a long break
-  const recentSessionTimestamps = S.sessionLog.filter(s => s.completed).slice(-5).map(s => new Date(s.ts).getTime());
-  let consecutiveNoBreak = 0;
-  if (recentSessionTimestamps.length >= 4) {
-    const span = (recentSessionTimestamps[recentSessionTimestamps.length - 1] - recentSessionTimestamps[0]) / 60000;
-    if (span < 120) consecutiveNoBreak = recentSessionTimestamps.length;
-  }
+  // 5. Overload detection (too many sessions without long break)
   if (todayData.sessions >= 6 && todayData.minutes >= 150) {
     tips.push({ icon: '⚠️', text: t('coach.tipOverload'), type: 'tip-warn' });
-  } else if (consecutiveNoBreak >= 4) {
-    tips.push({ icon: '🛑', text: t('coach.tipLongBreak'), type: 'tip-warn' });
   }
 
-  // 6. Subject analysis from task categories + planner
+  // 6. Subject analysis — use shared buildSubjectMap()
   const subjectMap = buildSubjectMap();
   const subjects = Object.entries(subjectMap).sort((a, b) => (b[1].tasks + b[1].hours) - (a[1].tasks + a[1].hours));
   if (subjects.length > 0) {
@@ -770,33 +774,30 @@ function refreshInsights() {
     if (subjects.length >= 2) {
       const topVal = subjects[0][1].tasks + subjects[0][1].hours;
       const secVal = subjects[1][1].tasks + subjects[1][1].hours;
-      if (topVal > secVal * 3 && secVal > 0) {
-        tips.push({ icon: '⚖️', text: t('coach.tipBalance').replace('{subj}', subjects[1][0]), type: 'tip-purple' });
-      }
+      if (topVal > secVal * 3 && secVal > 0) tips.push({ icon: '⚖️', text: t('coach.tipBalance').replace('{subj}', subjects[1][0]), type: 'tip-purple' });
     }
-  } else {
-    $('ins-subject').textContent = '—';
-  }
+  } else { $('ins-subject').textContent = '—'; }
 
   // 7. Streak encouragement
   const streak = calcStreak();
-  if (streak >= 3) {
-    tips.push({ icon: '🔥', text: t('coach.tipStreak').replace('{n}', streak), type: 'tip-success' });
-  } else if (streak === 0 && hasSessions) {
-    tips.push({ icon: '📅', text: t('coach.tipStreakBroken'), type: 'tip-info' });
+  if (streak >= 3) tips.push({ icon: '🔥', text: t('coach.tipStreak').replace('{n}', streak), type: 'tip-success' });
+  else if (streak === 0 && hasSessions) tips.push({ icon: '📅', text: t('coach.tipStreakBroken'), type: 'tip-info' });
+
+  // Overload: 4 sessions in row without big break
+  const recentCompleted = S.sessionLog.filter(s => s.completed).slice(-5);
+  if (recentCompleted.length >= 4) {
+    const span = recentCompleted.length > 1 ? (new Date(recentCompleted[recentCompleted.length-1].ts) - new Date(recentCompleted[0].ts)) / 60000 : 0;
+    if (span < 120 && span > 0) tips.push({ icon: '🛑', text: t('coach.tipLongBreak'), type: 'tip-warn' });
   }
 
-  // If no data at all, show welcome tip
-  if (tips.length === 0) {
-    tips.push({ icon: '👋', text: t('coach.tipWelcome'), type: 'tip-info' });
-  }
+  if (tips.length === 0) tips.push({ icon: '👋', text: t('coach.tipWelcome'), type: 'tip-info' });
 
   // Render tips (max 4)
   $('insights-tips').innerHTML = tips.slice(0, 4).map(tp =>
     `<div class="insight-tip ${tp.type}"><span class="tip-icon">${tp.icon}</span><span>${tp.text}</span></div>`
   ).join('');
 
-  // Also refresh whichever sub-tab is active
+  // Keep sub-tabs in sync
   refreshInsightsTab(_insightTab);
 }
 
@@ -823,7 +824,6 @@ function setup() {
   // Dashboard quick links
   $('btn-goto-todos').addEventListener('click', () => navigateTo('todos'));
   $('btn-goto-timer').addEventListener('click', () => navigateTo('timer'));
-  $('btn-goto-planner').addEventListener('click', () => navigateTo('planner'));
   $('btn-mini-start').addEventListener('click', () => { if (!S.timer.running) startTimer(); navigateTo('timer'); });
 
   // Todos
@@ -875,22 +875,74 @@ function setup() {
   $('btn-cal-next').addEventListener('click', () => { S.calWeekOffset++; renderCalendar(); });
   $('btn-ics-export').addEventListener('click', exportICS);
 
-  // AI
+  // AI — Summarize
   $('btn-summarize').addEventListener('click', () => {
     const text = $('ai-input').value.trim();
     if (!text) { toast('⚠️', t('ai.emptyMsg')); return; }
     const r = summarize(text);
-    $('ai-results').classList.remove('hidden'); $('ai-empty').classList.add('hidden');
-    $('ai-summary').textContent = r.summary;
+    showAIPanel('ai-results', '📄 Summary', 'var(--blue)');
+    $('ai-summary').textContent = r.summary || 'No clear summary found. Try adding more text.';
     $('ai-ideas').innerHTML = r.ideas.map(i => '<li>' + esc(i) + '</li>').join('');
   });
-  $('btn-study-notes').addEventListener('click', () => {
+
+  // AI — Flashcards
+  $('btn-flashcards').addEventListener('click', () => {
     const text = $('ai-input').value.trim();
     if (!text) { toast('⚠️', t('ai.emptyMsg')); return; }
-    const notes = createStudyNotes(text);
-    $('ai-results').classList.remove('hidden'); $('ai-empty').classList.add('hidden');
-    $('ai-summary').textContent = notes;
-    $('ai-ideas').innerHTML = '';
+    _fcCards = generateFlashcards(text);
+    _fcIndex = 0;
+    if (_fcCards.length === 0) { toast('💡', 'Not enough structured content for flashcards. Try text with definitions or key terms.'); return; }
+    showAIPanel('ai-flashcards', '🃏 Flashcards (' + _fcCards.length + ')', 'var(--purple)');
+    renderFlashcard();
+    toast('🃏', _fcCards.length + ' flashcards generated!');
+  });
+
+  // Flashcard flip
+  $('flashcard-scene').addEventListener('click', () => {
+    $('flashcard').classList.toggle('flipped');
+  });
+  $('btn-fc-prev').addEventListener('click', () => {
+    if (_fcIndex > 0) { _fcIndex--; renderFlashcard(); }
+  });
+  $('btn-fc-next').addEventListener('click', () => {
+    if (_fcIndex < _fcCards.length - 1) { _fcIndex++; renderFlashcard(); }
+  });
+
+  // AI — Suggest study tasks
+  $('btn-suggest-tasks').addEventListener('click', () => {
+    const text = $('ai-input').value.trim();
+    if (!text) { toast('⚠️', t('ai.emptyMsg')); return; }
+    const tasks = suggestStudyTasks(text);
+    showAIPanel('ai-suggested-tasks', '✅ Suggested Tasks', 'var(--green)');
+    $('suggested-task-list').innerHTML = tasks.map((task, i) =>
+      `<li class="suggested-task-item" data-idx="${i}">
+        <button class="btn-add-single-task btn btn-ghost btn-sm" data-idx="${i}" title="Add to tasks">+</button>
+        <div class="suggested-task-content">
+          <span class="suggested-task-text">${esc(task.text)}</span>
+          <span class="suggested-task-source">${esc(task.source)}</span>
+        </div>
+        <span class="suggested-task-cat">${esc(task.category)}</span>
+      </li>`
+    ).join('');
+    // Store for later adding
+    window._suggestedTasks = tasks;
+  });
+
+  // Add individual suggested task
+  $('suggested-task-list').addEventListener('click', e => {
+    const btn = e.target.closest('.btn-add-single-task');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.idx);
+    const task = window._suggestedTasks[idx];
+    if (task) { addTodo(task.text, task.category, ''); btn.textContent = '✓'; btn.disabled = true; btn.style.color = 'var(--green)'; }
+  });
+
+  // Add all suggested tasks
+  $('btn-add-all-tasks').addEventListener('click', () => {
+    if (!window._suggestedTasks) return;
+    window._suggestedTasks.forEach(task => addTodo(task.text, task.category, ''));
+    toast('✅', window._suggestedTasks.length + ' tasks added!');
+    document.querySelectorAll('.btn-add-single-task').forEach(b => { b.textContent = '✓'; b.disabled = true; b.style.color = 'var(--green)'; });
   });
 
   // Settings
@@ -944,7 +996,7 @@ function init() {
   renderCalendar();
   // Set default date for planner
   $('plan-date').value = dateKey(new Date());
-  // Initialize Adaptive Study Coach tabs
+  // Init insights tabs + coach
   initInsightsTabs();
 }
 
