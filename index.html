@@ -74,23 +74,29 @@
         <div class="dash-stat" id="dstat-hours"><div class="dash-stat-icon si-green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div><span class="dash-stat-val" id="ds-hours">0h</span><span class="dash-stat-lbl" data-i18n="dash.studyHours">Study Hours</span></div></div>
         <div class="dash-stat" id="dstat-streak"><div class="dash-stat-icon si-orange"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/></svg></div><div><span class="dash-stat-val" id="ds-streak">0</span><span class="dash-stat-lbl" data-i18n="dash.streak">Day Streak</span></div></div>
 
-        <!-- Quick Timer -->
-        <div class="dash-card span-2"><div class="card-header"><h3 data-i18n="dash.quickFocus">Quick Focus</h3><button class="btn btn-ghost btn-sm" id="btn-goto-timer" data-i18n="nav.pomodoro">Full Timer</button></div><div class="card-body center-col"><div class="mini-timer" id="mini-timer">25:00</div><button class="btn btn-primary" id="btn-mini-start" data-i18n="dash.startFocus">Start Focus</button></div></div>
-        <!-- Daily Goal -->
-        <div class="dash-card span-2"><div class="card-header"><h3 data-i18n="dash.dailyGoal">Daily Goal</h3><span class="badge" id="goal-badge">0 / 4</span></div><div class="card-body"><div class="progress-bar-wrap"><div class="progress-bar-fill" id="dash-goal-bar" style="width:0%"></div></div><p class="text-muted text-sm" id="dash-goal-text" data-i18n="dash.goalDesc">Complete focus sessions to reach your daily goal.</p></div></div>
+        <!-- Quick Focus + Daily Goal combined -->
+        <div class="dash-card span-2 focus-goal-card">
+          <div class="card-header"><h3 data-i18n="dash.quickFocus">Quick Focus</h3><button class="btn btn-ghost btn-sm" id="btn-goto-timer" data-i18n="nav.pomodoro">Full Timer</button></div>
+          <div class="card-body focus-goal-body">
+            <div class="mini-timer-wrap">
+              <div class="mini-timer" id="mini-timer">25:00</div>
+              <button class="btn btn-primary" id="btn-mini-start" data-i18n="dash.startFocus">Start Focus</button>
+            </div>
+            <div class="dash-goal-inline">
+              <div class="dash-goal-header"><span class="dash-goal-lbl" data-i18n="dash.dailyGoal">Daily Goal</span><span class="badge" id="goal-badge">0 / 4</span></div>
+              <div class="progress-bar-wrap"><div class="progress-bar-fill" id="dash-goal-bar" style="width:0%"></div></div>
+              <p class="text-muted text-sm" id="dash-goal-text" data-i18n="dash.goalDesc">Complete focus sessions to reach your daily goal.</p>
+            </div>
+          </div>
+        </div>
 
         <!-- Recent Tasks -->
         <div class="dash-card span-2"><div class="card-header"><h3 data-i18n="dash.recentTasks">Recent Tasks</h3><button class="btn btn-ghost btn-sm" id="btn-goto-todos" data-i18n="nav.tasks">View All</button></div><div class="card-body"><div class="empty-state" id="dash-empty-tasks"><span class="empty-icon">📋</span><p data-i18n="dash.noTasks">No tasks yet.</p></div><ul class="task-preview-list" id="dash-task-list"></ul></div></div>
-        <!-- Upcoming -->
-        <div class="dash-card span-2"><div class="card-header"><h3 data-i18n="dash.upcoming">Upcoming Sessions</h3><button class="btn btn-ghost btn-sm" id="btn-goto-planner" data-i18n="nav.planner">Plan</button></div><div class="card-body"><div class="empty-state" id="dash-empty-plan"><span class="empty-icon">📅</span><p data-i18n="dash.noPlan">No sessions planned.</p></div><ul class="plan-preview-list" id="dash-plan-list"></ul></div></div>
 
         <!-- Study Insights (Adaptive Study Coach) -->
         <div class="dash-card span-4 insights-card">
           <div class="card-header">
-            <div class="insights-header-left">
-              <h3>🧠 <span data-i18n="coach.title">Study Insights</span></h3>
-              <span class="badge badge-coach" data-i18n="coach.badge">AI Coach</span>
-            </div>
+            <div class="insights-header-left"><h3>🧠 <span data-i18n="coach.title">Study Insights</span></h3><span class="badge badge-coach" data-i18n="coach.badge">AI Coach</span></div>
             <div class="insights-tabs">
               <button class="insights-tab active" data-itab="overview" data-i18n="coach.tabOverview">Overview</button>
               <button class="insights-tab" data-itab="subjects" data-i18n="coach.tabSubjects">Subjects</button>
@@ -98,7 +104,6 @@
             </div>
           </div>
           <div class="card-body">
-            <!-- Tab: Overview -->
             <div class="insights-tab-panel active" id="itab-overview">
               <div class="insights-grid" id="insights-grid">
                 <div class="insight-item"><div class="insight-icon">⏰</div><div><span class="insight-label" data-i18n="coach.bestTime">Best Study Time</span><span class="insight-value" id="ins-best-time">—</span></div></div>
@@ -108,17 +113,12 @@
               </div>
               <div class="insights-tips" id="insights-tips"></div>
             </div>
-            <!-- Tab: Subject Analysis -->
             <div class="insights-tab-panel" id="itab-subjects">
-              <div class="subject-analysis" id="subject-analysis">
+              <div class="subject-analysis">
                 <div class="empty-state" id="subject-empty"><span class="empty-icon">📚</span><p data-i18n="coach.noSubjects">Add tasks with categories or planner sessions to see subject analysis.</p></div>
                 <div id="subject-chart-wrap" class="hidden">
                   <div class="subject-chart-header">
-                    <div class="subject-chart-toggle">
-                      <button class="sct-btn active" data-sct="hours" data-i18n="coach.byHours">Hours</button>
-                      <button class="sct-btn" data-sct="sessions" data-i18n="coach.bySessions">Sessions</button>
-                      <button class="sct-btn" data-sct="tasks" data-i18n="coach.byTasks">Tasks</button>
-                    </div>
+                    <div class="subject-chart-toggle"><button class="sct-btn active" data-sct="hours">Hours</button><button class="sct-btn" data-sct="tasks">Tasks</button></div>
                     <span class="subject-legend-note" data-i18n="coach.subjectNote">Based on tasks & planner</span>
                   </div>
                   <div class="subject-bars" id="subject-bars"></div>
@@ -126,21 +126,11 @@
                 </div>
               </div>
             </div>
-            <!-- Tab: Patterns -->
             <div class="insights-tab-panel" id="itab-patterns">
               <div class="patterns-layout">
-                <div class="pattern-card" id="pat-hourly">
-                  <div class="pattern-card-title" data-i18n="coach.hourlyActivity">Hourly Activity</div>
-                  <div class="hourly-heatmap" id="hourly-heatmap"></div>
-                </div>
-                <div class="pattern-card" id="pat-pomodoro">
-                  <div class="pattern-card-title" data-i18n="coach.pomodoroHealth">Pomodoro Health</div>
-                  <div class="pomodoro-stats" id="pomodoro-stats"></div>
-                </div>
-                <div class="pattern-card" id="pat-daily">
-                  <div class="pattern-card-title" data-i18n="coach.dailyPattern">Daily Load</div>
-                  <div class="daily-load-bars" id="daily-load-bars"></div>
-                </div>
+                <div class="pattern-card"><div class="pattern-card-title" data-i18n="coach.hourlyActivity">Hourly Activity</div><div id="hourly-heatmap"></div></div>
+                <div class="pattern-card"><div class="pattern-card-title" data-i18n="coach.pomodoroHealth">Pomodoro Health</div><div id="pomodoro-stats"></div></div>
+                <div class="pattern-card"><div class="pattern-card-title" data-i18n="coach.dailyPattern">Daily Load</div><div id="daily-load-bars"></div></div>
               </div>
             </div>
           </div>
@@ -255,19 +245,85 @@
 
     <!-- ====== AI HELPER ====== -->
     <div class="page" id="page-ai">
-      <div class="page-header"><div><h1 data-i18n="ai.title">AI Study Helper</h1><p data-i18n="ai.subtitle">Paste your notes to get summaries ✨</p></div></div>
+      <div class="page-header"><div><h1 data-i18n="ai.title">AI Study Helper</h1><p data-i18n="ai.subtitle">Paste your notes — summarize, make flashcards, or get study tasks ✨</p></div></div>
       <div class="ai-layout">
-        <div class="card"><div class="card-header"><h3 data-i18n="ai.input">Your Text</h3></div><div class="card-body">
-          <textarea id="ai-input" class="form-textarea" rows="10" data-i18n-ph="ai.placeholder" placeholder="Paste your text or notes here..."></textarea>
-          <div class="ai-actions mt"><button class="btn btn-primary" id="btn-summarize" data-i18n="ai.summarize">Summarize</button><button class="btn btn-ghost" id="btn-study-notes" data-i18n="ai.studyNotes">Create Study Notes</button></div>
-        </div></div>
-        <div class="card flex-1"><div class="card-header"><h3 data-i18n="ai.output">Results</h3></div><div class="card-body">
-          <div class="empty-state" id="ai-empty"><span class="empty-icon">🤖</span><p data-i18n="ai.emptyMsg">Paste text and click Summarize to get started.</p></div>
-          <div class="ai-results hidden" id="ai-results">
-            <h4 data-i18n="ai.summary">Summary</h4><div class="ai-box" id="ai-summary"></div>
-            <h4 class="mt" data-i18n="ai.keyIdeas">Key Ideas</h4><ul class="ai-ideas" id="ai-ideas"></ul>
+        <!-- Input panel -->
+        <div class="card ai-input-card">
+          <div class="card-header"><h3 data-i18n="ai.input">Your Notes</h3></div>
+          <div class="card-body">
+            <textarea id="ai-input" class="form-textarea" rows="12" data-i18n-ph="ai.placeholder" placeholder="Paste your lecture notes, textbook section or any study material here..."></textarea>
+            <div class="ai-actions mt">
+              <button class="btn btn-primary" id="btn-summarize" data-i18n="ai.summarize">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span data-i18n="ai.summarize">Summarize</span>
+              </button>
+              <button class="btn btn-ghost" id="btn-flashcards">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                <span data-i18n="ai.flashcards">Flashcards</span>
+              </button>
+              <button class="btn btn-ghost" id="btn-suggest-tasks">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                <span data-i18n="ai.suggestTasks">Study Tasks</span>
+              </button>
+            </div>
           </div>
-        </div></div>
+        </div>
+
+        <!-- Output panel -->
+        <div class="card flex-1 ai-output-card">
+          <div class="card-header">
+            <h3 data-i18n="ai.output">Results</h3>
+            <span class="ai-mode-badge hidden" id="ai-mode-badge"></span>
+          </div>
+          <div class="card-body">
+            <!-- Empty state -->
+            <div class="empty-state" id="ai-empty">
+              <span class="empty-icon">🤖</span>
+              <p data-i18n="ai.emptyMsg">Paste your notes and choose an action to get started.</p>
+            </div>
+
+            <!-- Loading state -->
+            <div class="ai-loading hidden" id="ai-loading">
+              <div class="ai-spinner"></div>
+              <p class="text-muted text-sm" id="ai-loading-text">Analyzing...</p>
+            </div>
+
+            <!-- Summary results -->
+            <div class="ai-results hidden" id="ai-results">
+              <h4 data-i18n="ai.summary">Summary</h4>
+              <div class="ai-box" id="ai-summary"></div>
+              <h4 class="mt" data-i18n="ai.keyIdeas">Key Ideas</h4>
+              <ul class="ai-ideas" id="ai-ideas"></ul>
+            </div>
+
+            <!-- Flashcards results -->
+            <div class="ai-flashcards hidden" id="ai-flashcards">
+              <div class="flashcard-header">
+                <span id="fc-counter" class="fc-counter">1 / 1</span>
+                <div class="fc-nav">
+                  <button class="btn btn-ghost btn-sm" id="btn-fc-prev">← Prev</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-fc-next">Next →</button>
+                </div>
+              </div>
+              <div class="flashcard-scene" id="flashcard-scene">
+                <div class="flashcard" id="flashcard">
+                  <div class="flashcard-front"><div class="fc-label">Question</div><div class="fc-text" id="fc-front-text"></div><div class="fc-hint">Click to reveal answer</div></div>
+                  <div class="flashcard-back"><div class="fc-label">Answer</div><div class="fc-text" id="fc-back-text"></div></div>
+                </div>
+              </div>
+              <div class="fc-progress" id="fc-progress"></div>
+            </div>
+
+            <!-- Suggested tasks results -->
+            <div class="ai-suggested-tasks hidden" id="ai-suggested-tasks">
+              <div class="suggested-tasks-header">
+                <p class="text-muted text-sm" data-i18n="ai.suggestDesc">Based on your notes — click to add to your task list:</p>
+              </div>
+              <ul class="suggested-task-list" id="suggested-task-list"></ul>
+              <button class="btn btn-primary mt" id="btn-add-all-tasks" data-i18n="ai.addAll">Add All Tasks</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
