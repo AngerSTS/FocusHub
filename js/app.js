@@ -34,7 +34,7 @@ const S = {
   sessionLog: [],   // [{ts: ISO string, hour: 0-23, dur: minutes, completed: bool}]
   planner: [],
   profile: { name: '', dailyGoal: 4 },
-  settings: { theme: 'dark', lang: 'en', sound: true, notif: false },
+  settings: { theme: 'dark', lang: 'en', sound: true, notif: false, autoStart: false },
   filter: 'all',
   calWeekOffset: 0,
 };
@@ -72,13 +72,21 @@ function applyTheme(th) {
 // ============================
 // NAVIGATION
 // ============================
-function showApp() { landing.classList.add('hidden'); app.classList.remove('hidden'); refreshDashboard(); }
+function showApp() {
+  landing.classList.add('hidden'); app.classList.remove('hidden');
+  const fab = $('fab-quick-add'); if (fab) fab.classList.remove('hidden');
+  refreshDashboard();
+}
 function showLanding() { app.classList.add('hidden'); landing.classList.remove('hidden'); }
 
 function navigateTo(page) {
   document.querySelectorAll('.nav-item[data-page]').forEach(n => n.classList.toggle('active', n.dataset.page === page));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
   closeMobile();
+  // Show FAB only on dashboard
+  const fab = $('fab-quick-add'), qPanel = $('quick-add-panel');
+  if (fab) { fab.classList.toggle('hidden', page !== 'dashboard'); fab.classList.remove('open'); }
+  if (qPanel) qPanel.classList.add('hidden');
   if (page === 'dashboard') refreshDashboard();
   if (page === 'stats') refreshStats();
   if (page === 'calendar') renderCalendar();
@@ -112,7 +120,22 @@ function refreshDashboard() {
   $('ds-sessions').textContent = S.stats.totalSessions;
   const hrs = (S.stats.totalMinutes / 60);
   $('ds-hours').textContent = hrs >= 1 ? hrs.toFixed(1) + 'h' : S.stats.totalMinutes + 'm';
-  $('ds-streak').textContent = calcStreak();
+  const streak = calcStreak();
+  $('ds-streak').textContent = streak + (streak > 0 ? ' 🔥' : '');
+
+  // Streak visualizer — show last 7 days
+  const maxGoal = 7;
+  const streakPct = Math.min((streak / maxGoal) * 100, 100);
+  const fillEl = $('streak-bar-fill');
+  if (fillEl) fillEl.style.width = streakPct + '%';
+  const daysRow = $('streak-days-row');
+  if (daysRow) {
+    daysRow.innerHTML = Array.from({length: 7}, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (6 - i));
+      const active = S.stats.daily[dateKey(d)] && S.stats.daily[dateKey(d)].sessions > 0;
+      return `<div class="streak-day${active ? ' active' : ''}" title="${d.toLocaleDateString()}"></div>`;
+    }).join('');
+  }
 
   // Daily goal progress
   const goal = S.profile.dailyGoal || 4;
@@ -172,6 +195,7 @@ function renderTodos() {
         <div class="todo-content">
           <span class="todo-text ${tk.completed ? 'done' : ''}">${esc(tk.text)}</span>
           <div class="todo-meta">
+            ${tk.priority ? `<span class="prio-badge prio-${tk.priority}">${tk.priority === 'high' ? '🔴' : tk.priority === 'medium' ? '🟡' : '🟢'} ${tk.priority}</span>` : ''}
             ${tk.category ? '<span class="todo-cat">' + esc(tk.category) + '</span>' : ''}
           </div>
           ${tk.notes ? '<div class="todo-note">' + esc(tk.notes) + '</div>' : ''}
@@ -194,8 +218,8 @@ function renderTodos() {
   });
 }
 
-function addTodo(text, cat, notes) {
-  S.todos.push({ id: Date.now().toString(), text, category: cat || '', notes: notes || '', completed: false, order: S.todos.length, createdAt: new Date().toISOString() });
+function addTodo(text, cat, notes, priority) {
+  S.todos.push({ id: Date.now().toString(), text, category: cat || '', notes: notes || '', priority: priority || '', completed: false, order: S.todos.length, createdAt: new Date().toISOString() });
   save(); renderTodos(); refreshDashboard(); toast('✅', t('todos.add') + ': ' + text);
 }
 
@@ -263,11 +287,20 @@ function startTimer() {
         S.timer.secs = S.timer.focusDur; S.timer.isBreak = false;
         playSound(); sendNotif(t('timer.breakDone'));
         toast('⏰', t('timer.breakDone'));
+        // Auto-start next focus session if enabled
+        if (S.settings.autoStart) {
+          setTimeout(() => { updateTimerUI(); startTimer(); }, 1200);
+        }
       }
       updateTimerUI(); refreshDashboard(); refreshStats();
     }
     updateTimerDisplay(); updateRing();
     $('mini-timer').textContent = fmtTime(S.timer.secs);
+    // Pulse mini-timer every minute mark
+    if (S.timer.secs % 60 === 0) {
+      const mt = $('mini-timer');
+      mt.classList.remove('pulse'); void mt.offsetWidth; mt.classList.add('pulse');
+    }
     $('focus-timer').textContent = fmtTime(S.timer.secs);
   }, 1000);
 }
@@ -527,6 +560,8 @@ function loadSettings() {
   $('input-break-dur').value = Math.round(S.timer.breakDur / 60);
   $('chk-sound').checked = S.settings.sound;
   $('chk-notif').checked = S.settings.notif;
+  const autoEl = $('chk-autostart');
+  if (autoEl) autoEl.checked = S.settings.autoStart || false;
   populateLangSelect();
   applyTheme(S.settings.theme);
   updateAvatar();
@@ -780,8 +815,17 @@ function refreshInsights() {
 
   // 7. Streak encouragement
   const streak = calcStreak();
-  if (streak >= 3) tips.push({ icon: '🔥', text: t('coach.tipStreak').replace('{n}', streak), type: 'tip-success' });
+  if (streak >= 7) tips.push({ icon: '🏆', text: t('coach.tipStreak').replace('{n}', streak) + ' Incredible week!', type: 'tip-success' });
+  else if (streak >= 3) tips.push({ icon: '🔥', text: t('coach.tipStreak').replace('{n}', streak), type: 'tip-success' });
   else if (streak === 0 && hasSessions) tips.push({ icon: '📅', text: t('coach.tipStreakBroken'), type: 'tip-info' });
+  else if (streak === 0 && !hasSessions) tips.push({ icon: '💫', text: 'Start your first session today to kick off your streak!', type: 'tip-info' });
+
+  // 8. Late-night sessions tip → suggest mornings
+  const nightSessions = S.sessionLog.filter(s => s.completed && (s.hour >= 22 || s.hour <= 5)).length;
+  const morningSessions = S.sessionLog.filter(s => s.completed && s.hour >= 7 && s.hour <= 10).length;
+  if (nightSessions > morningSessions && nightSessions >= 3) {
+    tips.push({ icon: '🌅', text: 'You often study late at night. Morning sessions (7–10am) can boost retention by up to 30%.', type: 'tip-info' });
+  }
 
   // Overload: 4 sessions in row without big break
   const recentCompleted = S.sessionLog.filter(s => s.completed).slice(-5);
@@ -830,8 +874,8 @@ function setup() {
   $('todo-form').addEventListener('submit', e => {
     e.preventDefault();
     const text = $('todo-input').value.trim(); if (!text) return;
-    addTodo(text, $('todo-category').value.trim(), $('todo-notes').value.trim());
-    $('todo-input').value = ''; $('todo-category').value = ''; $('todo-notes').value = '';
+    addTodo(text, $('todo-category').value.trim(), $('todo-notes').value.trim(), $('todo-priority').value);
+    $('todo-input').value = ''; $('todo-category').value = ''; $('todo-notes').value = ''; $('todo-priority').value = '';
   });
   $('todo-list').addEventListener('change', e => { if (e.target.classList.contains('todo-checkbox')) toggleTodo(e.target.dataset.tid); });
   $('todo-list').addEventListener('click', e => { const btn = e.target.closest('.todo-delete'); if (btn) deleteTodo(btn.dataset.tid); });
@@ -956,6 +1000,39 @@ function setup() {
       Notification.requestPermission().then(p => { S.settings.notif = p === 'granted'; $('chk-notif').checked = S.settings.notif; save(); });
     } else { S.settings.notif = false; save(); }
   });
+  // Auto-start toggle
+  const autoEl = $('chk-autostart');
+  if (autoEl) autoEl.addEventListener('change', () => { S.settings.autoStart = autoEl.checked; save(); toast('⚙️', autoEl.checked ? 'Auto-start enabled' : 'Auto-start disabled'); });
+
+  // FAB — Quick Add Task (only visible on Dashboard)
+  const fab = $('fab-quick-add'), qPanel = $('quick-add-panel');
+  if (fab) {
+    fab.addEventListener('click', () => {
+      const isOpen = !qPanel.classList.contains('hidden');
+      if (isOpen) { qPanel.classList.add('hidden'); fab.classList.remove('open'); }
+      else { qPanel.classList.remove('hidden'); fab.classList.add('open'); setTimeout(() => $('quick-add-input').focus(), 50); }
+    });
+  }
+  if ($('btn-quick-add-submit')) {
+    $('btn-quick-add-submit').addEventListener('click', () => {
+      const text = $('quick-add-input').value.trim(); if (!text) return;
+      addTodo(text, $('quick-add-cat').value.trim(), '', $('quick-add-prio').value);
+      $('quick-add-input').value = ''; $('quick-add-cat').value = ''; $('quick-add-prio').value = '';
+      qPanel.classList.add('hidden'); fab.classList.remove('open');
+    });
+    // Submit on Enter in quick-add input
+    $('quick-add-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-quick-add-submit').click(); });
+  }
+  // Dismiss panel on outside click
+  document.addEventListener('click', e => {
+    if (qPanel && !qPanel.classList.contains('hidden') && !qPanel.contains(e.target) && e.target !== fab && !fab.contains(e.target)) {
+      qPanel.classList.add('hidden'); fab.classList.remove('open');
+    }
+  });
+
+  // Empty state CTA on dashboard
+  const emptyAddBtn = $('btn-empty-add-task');
+  if (emptyAddBtn) emptyAddBtn.addEventListener('click', () => { navigateTo('todos'); setTimeout(() => $('todo-input').focus(), 100); });
   $('btn-reset-all').addEventListener('click', () => {
     if (!confirm('Reset all data? This cannot be undone.')) return;
     localStorage.removeItem('ffh');
